@@ -1,0 +1,3 @@
+Hello, World!
+This is a sample input file.
+It contains some text that will be encrypted or decrypted using the key.
