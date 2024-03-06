@@ -1,76 +1,75 @@
-import sys
+import struct
 
+# Function to hide a byte into a pixel
 def hide_byte_into_pixel(pixel, hide_byte):
-    pixel[0] &= 0xFC
-    pixel[0] |= (hide_byte >> 6) & 0x3
-    pixel[1] &= 0xFC
-    pixel[1] |= (hide_byte >> 4) & 0x3
-    pixel[2] &= 0xFC
-    pixel[2] |= (hide_byte >> 2) & 0x3
-    pixel[3] &= 0xFC
-    pixel[3] |= hide_byte & 0x3
+    if hide_byte is not None:
+        pixel[0] &= 0xFC
+        pixel[0] |= (hide_byte >> 6) & 0x3
+        pixel[1] &= 0xFC
+        pixel[1] |= (hide_byte >> 4) & 0x3
+        pixel[2] &= 0xFC
+        pixel[2] |= (hide_byte >> 2) & 0x3
+        pixel[3] &= 0xFC
+        pixel[3] |= hide_byte & 0x3
 
+# Function to extract a byte from a pixel
 def extract_byte_from_pixel(pixel):
     return ((pixel[0] & 0x3) << 6) | ((pixel[1] & 0x3) << 4) | ((pixel[2] & 0x3) << 2) | (pixel[3] & 0x3)
 
-def hide_data_in_image(input_image, output_image, data_file):
-    with open(input_image, 'rb') as img_file:
-        img_data = bytearray(img_file.read())
+# Function to hide data in a BMP file
+def hide_data_in_bmp(input_bmp, output_bmp, data):
+    with open(input_bmp, 'rb') as f:
+        # Read BMP file header
+        header = f.read(54)
+        output_data = bytearray(header)
 
-    with open(data_file, 'rb') as data:
-        data_to_hide = data.read()
-    
-    data_to_hide += bytes([0xFF])  # End of file marker
-    
-    if len(data_to_hide) * 4 > len(img_data) - 54:
-        print("Error: Input image is too small to hide data")
-        return
+        # Hide data in pixels
+        byte_index = 0
+        while True:
+            pixel = bytearray(f.read(4))
+            if not pixel:
+                break
+            if byte_index < len(data):
+                hide_byte_into_pixel(pixel, data[byte_index])
+                output_data.extend(pixel)
+                byte_index += 1
+            else:
+                # If we've reached the end of the data, append remaining pixels unchanged
+                output_data.extend(pixel)
 
-    idx = 54  # Start of pixel data
-    for byte in data_to_hide:
-        hide_byte_into_pixel(img_data[idx:idx+4], byte)
-        idx += 4
+    with open(output_bmp, 'wb') as f:
+        f.write(output_data)
 
-    with open(output_image, 'wb') as out_img:
-        out_img.write(img_data)
+# Function to extract data from a BMP file
+def extract_data_from_bmp(bmp_file):
+    with open(bmp_file, 'rb') as f:
+        # Skip BMP file header
+        f.seek(54)
+        data = []
+        while True:
+            pixel = bytearray(f.read(4))
+            extracted_byte = extract_byte_from_pixel(pixel)
+            if extracted_byte == 0xFF:  # End of file marker
+                break
+            data.append(extracted_byte)
+    return bytes(data)
 
-    print("Data hidden successfully.")
+# Example usage:
+input_bmp = "/home/rad/VisualStudioCode_reps/UnversityEducation_ProtectInformation/Lab3/5.bmp"
+output_bmp = "/home/rad/VisualStudioCode_reps/UnversityEducation_ProtectInformation/Lab3/output.bmp"
+data_to_hide = b""
+hide_data_in_bmp(input_bmp, output_bmp, data_to_hide)
 
-def extract_data_from_image(image):
-    with open(image, 'rb') as img_file:
-        img_data = img_file.read()
+extracted_data = extract_data_from_bmp(output_bmp)
 
-    extracted_data = bytearray()
-    idx = 54  # Start of pixel data
+# Try decoding with different encodings
+for encoding in ['utf-8', 'cp1251', 'koi8-r']:
+    try:
+        decoded_data = extracted_data.decode(encoding)
+        print("Extracted data ({}): {}".format(encoding, decoded_data))
+        break
+    except UnicodeDecodeError:
+        continue
+else:
+    print("Unable to decode the extracted data with known encodings.")
 
-    while True:
-        byte = extract_byte_from_pixel(img_data[idx:idx+4])
-        idx += 4
-        if byte == 0xFF:
-            break
-        extracted_data.append(byte)
-
-    return extracted_data
-
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python steganography.py <mode> <input_image> <output_image> <data_file>")
-        return
-
-    mode = sys.argv[1]
-    input_image = sys.argv[2]
-    output_image = sys.argv[3]
-    data_file = sys.argv[4]
-
-    if mode == 'hide':
-        hide_data_in_image(input_image, output_image, data_file)
-    elif mode == 'extract':
-        extracted_data = extract_data_from_image(input_image)
-        with open(output_image, 'wb') as out_file:
-            out_file.write(extracted_data)
-        print("Data extracted successfully.")
-    else:
-        print("Invalid mode. Please use 'hide' or 'extract'.")
-
-if __name__ == "__main__":
-    main()
